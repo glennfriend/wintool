@@ -1,15 +1,16 @@
 <?php
 #!/usr/bin/php -q
+use League\Csv\Reader;
+use League\Csv\Writer;
+use App\Library\Csv\CsvHeaderNameManager;
 
+//
 $basePath = dirname(__DIR__);
 require_once $basePath . '/core/bootstrap.php';
-initialize($basePath);
+initialize();
 
-
-
-
-echo 'hi, bye';
-// perform();
+//
+perform();
 exit;
 
 // --------------------------------------------------------------------------------
@@ -21,174 +22,166 @@ exit;
  */
 function perform()
 {
-    if ( phpversion() < '5.5' ) {
-        /**
-         *  @see array_column(), PHP 5.5
-         */
-        show("PHP Version need >= 5.5", true);
+    $previous_user = '';
+    $current_user = '';
+
+    list($outputHeaders, $rows) = getCsvContents();
+    if (!$rows) {
+        echo "沒有資料";
         exit;
     }
 
-    if (!getParam('exec')) {
-        show('---- debug mode ---- (參數 "exec" 執行寫入指令)');
-    }
+    $key1 = 'i';        // 第一組時間 的 欄位名稱
+    $key2 = 'w';        // 第二組時間 的 欄位名稱
+    $key3 = 'l';        // 第三組時間 的 欄位名稱
+    $nameKey = 'umw';   // 以該欄位做為 user 分類名稱
 
-    Log::record('start PHP '. phpversion() );
-    upgradeGoogleSheet();
+    foreach ($rows as $index => $row) {
 
-    // create CSV file
-    $csvFileName = getCsvFileName();
-    makeCsvFile($csvFileName);
+        $row['new_1'] = '';
+        $row['new_2'] = '';
+        $row['new_3'] = '';
+        $current_user = $row[$nameKey];
+        if ($previous_user === $current_user) {
 
-    // upload CSV file
-    if (getParam('exec')) {
-        uploadCsvFile($csvFileName);
-    }
+            $previousIndex = $index - 1;
 
-    show("done", true);
-}
+            $previousTime = $rows[$previousIndex]['new_1'];
+            $row['new_1'] = calculateTimePlus($row[$key1], $previousTime);
+            $rows[$previousIndex]['new_1'] = '';
 
-/**
- *
- */
-function upgradeGoogleSheet()
-{
-    $token = GoogleApiHelper::getToken();
-    if (!$token) {
-        show('token error!', true);
-        exit;
-    }
+            $previousTime = $rows[$previousIndex]['new_2'];
+            $row['new_2'] = calculateTimePlus($row[$key2], $previousTime);
+            $rows[$previousIndex]['new_2'] = '';
 
-    // long time ...
-    $worksheet = GoogleApiHelper::getWorksheet(
-        conf('google.spreadsheets.book'),
-        conf('google.spreadsheets.sheet'),
-        $token
-    );
-    if (!$worksheet) {
-        show('campaigns sheet not found!', true);
-        exit;
-    }
+            $previousTime = $rows[$previousIndex]['new_3'];
+            $row['new_3'] = calculateTimePlus($row[$key3], $previousTime);
+            $rows[$previousIndex]['new_3'] = '';
 
-    $sheet = new GoogleWorksheetManager($worksheet);
-    $header = $sheet->getHeader();
-    $count  = $sheet->getCount();
-
-    for ( $i=0; $i<$count; $i++ ) {
-
-        $row = $sheet->getRow($i);
-        $row = filterUnusedCode($row);
-
-        //
-        $row = updateDate($row);
-        $row = updateByFacebook($row, $header);
-
-        //
-        // show($row);
-
-
-        // update sheet row
-        if (getParam('exec')) {
-            // 如果內容完全相同, 就不需要更新
-            // 為了達到該效果, int 需要轉化為 string
-            $originRow = $sheet->getRow($i);
-
-            if ( md5(serialize($originRow)) === md5(serialize($row)) ) {
-                echo "({$i}-same) ";
-            }
-            else {
-                $result = writeSheet($row, $i, $sheet);
-                if ($result) {
-                    echo "{$i} ";
-                }
-                else {
-                    echo "({$i}-udpate-fail) ";
-                }
-            }
+        }
+        else {
+            $row['new_1'] = calculateTimePlus($row[$key1]);
+            $row['new_2'] = calculateTimePlus($row[$key2]);
+            $row['new_3'] = calculateTimePlus($row[$key3]);
         }
 
-        // show message
-        if (!isCli()) {
-            ob_flush(); flush();
-        }
+        $rows[$index] = $row;
+        $previous_user = $current_user;
     }
 
-    show('');
+    // pr($rows);
+    downloadCsv($outputHeaders, $rows);
+
+}
+
+// --------------------------------------------------------------------------------
+//
+// --------------------------------------------------------------------------------
+
+/**
+ * 對 天數 及 時數 做計算
+ * 時數過 8 則進位到 天數
+ *
+ * @param string $timeString     format hh:mm:dd
+ * @param string $plusTimeString format hh:mm:dd
+ * @return string
+ */
+function calculateTimePlus($timeString, $plusTimeString='')
+{
+    $parseTimeFunc = function($myTime) {
+        preg_match_all("/([0-9]{2}):([0-9]{2}):([0-9]{2})/is", $myTime, $matches);
+        return $matches;
+    };
+
+    $times = $parseTimeFunc($timeString);
+    $day    = (int) $times[1][0];
+    $hour   = (int) $times[2][0];
+    $minute = (int) $times[3][0];
+
+    // 如果要相加
+    if ($plusTimeString) {
+
+        $plusTimes  = $parseTimeFunc($plusTimeString);
+        $plusDay    = (int) $plusTimes[1][0];
+        $plusHoure  = (int) $plusTimes[2][0];
+        $plusMinute = (int) $plusTimes[3][0];
+
+        $day    += $plusDay;
+        $hour   += $plusHoure;
+        $minute += $plusMinute;
+
+        // 將 小時 進位到 天 的值
+        $hourAddNumber = floor($hour / 8);
+        if ($hourAddNumber) {
+            $day += $hourAddNumber;
+            $hour = $hour % 8;  // 進位之後, 剩下的小時數
+        }
+
+    }
+
+    $format = sprintf('%02s:%02s:%02s', $day, $hour, $minute);
+    return $format;
 }
 
 /**
- *  資料寫入 google sheet
- *  @return true=有寫入, false=無寫入
+ *
  */
-function writeSheet($row, $index, $sheet)
+function getCsvContents()
 {
-    try {
-        $sheet->setRow($index, $row);
+    $varPath = getProjectPath('/var');
+    $fileRule = "{$varPath}/*.[cC][sS][vV]";
+    $files = glob($fileRule, GLOB_ERR);
+    $fileCount = count($files);
+    if ($fileCount < 1) {
+        echo "{$varPath} 目錄中找不到 csv 檔案";
+        exit;
     }
-    catch ( Exception $e) {
-        show($e->getMessage(), true);
+    elseif ($fileCount > 1) {
+        echo "{$varPath} 目錄有多個 csv 檔案, 只保留一個檔案";
         exit;
     }
 
-    return true;
-}
-
-
-
-/**
- *
- */
-function updateDate( $row )
-{
-    $row['date'] = date("n/j/Y", time());
-    $row['date'] = date('n/j/Y', strtotime($row['date'] . ' - 1 day'));
-    return $row;
+    $csvFile = $files[0];
+    return parseCsv($csvFile);
 }
 
 /**
  *
  */
-function updateByFacebook($row, $header)
+function parseCsv($file)
 {
-    $row['impressions'] = 0;
-    $row['clicks']      = 0;
-    $row['cost']        = 0;
+    $csv = Reader::createFromPath($file);
+    $originHeaders = $csv->fetchOne();
+    $headers = CsvHeaderNameManager::convert($originHeaders);
 
-    $items = getFacebookItems();
-    foreach ($items as $item) {
-        if ($row['campaign'] == $item['campaign_name']) {
-            $row['cost']        = (string) (double) $item['spend'];
-            $row['impressions'] = (string) (double) $item['impressions'];
-            $row['clicks']      = (string) (double) $item['action_comment'];
-            break;
+    $index = 0;
+    foreach ($csv->fetchAssoc($headers) as $row) {
+        $index++;
+        if (1 === $index) {
+            // is header
+            continue;
         }
+
+        $rows[] = $row;
     }
 
-    return $row;
-}
-
-/**
- *  cache facebook data
- */
-function getFacebookItems()
-{
-    static $result;
-    if ($result) {
-        return $result;
-    }
-
-    $result = FacebookHelper::getWrapCampaignLevel();
-    return $result;
+    return [$originHeaders, $rows];
 }
 
 /**
  *
  */
-function getCsvFileName()
+function downloadCsv(array $headers, array $rows)
 {
-    $dateFormat = date('Y-m-d', time());
-    $dateFormat = date('Y-m-d', strtotime($dateFormat . ' - 1 day'));
-    $path = conf('public.base.path') . '/var/kenshoo_upload';
-    $file = "WeddingDresses-UC_File-{$dateFormat}.csv";
-    return $path . '/' . $file;
+    $csv = Writer::createFromFileObject(new SplTempFileObject());
+    $csv->insertOne($headers);
+
+    foreach ($rows as $row) {
+        $csv->insertOne($row);
+    }
+
+    $outputPath = getProjectPath('/var/output.csv');
+    $outputName = 'output_' . date('Y-m-d') . '.csv';
+    //$csv->setOutputBOM(Reader::BOM_UTF8);
+    $csv->output($outputName);
 }
