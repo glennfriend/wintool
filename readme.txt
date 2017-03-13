@@ -1,3 +1,7 @@
+Q 有些程式會啟動 server, 要在那裡看網頁
+  開啟瀏灠器, 輸入 http://localhost/
+
+
 Q 從 windows 跳出的視窗, 顯示的中文是亂碼
 A https://superuser.com/questions/675369/what-encoding-to-get-%C3%85-%C3%84-%C3%96-to-work
   在視窗的標題上按滑鼠右鍵
@@ -7,3 +11,4 @@ A https://superuser.com/questions/675369/what-encoding-to-get-%C3%85-%C3%84-%C3%
   然後關窗視窗
   下次再開視窗的時候
   中文就不會是亂碼了
+

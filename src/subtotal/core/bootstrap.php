@@ -6,14 +6,18 @@ use App\Utility\Log;
  */
 function initialize()
 {
-    $basePath = getProjectPath();
-
     error_reporting(E_ALL);
     ini_set('html_errors','Off');
     ini_set('display_errors','On');
 
     //
+    $basePath = getProjectPath();
+
+    //
     require_once $basePath . '/vendor/autoload.php';
+
+    //
+    require_once $basePath . '/core/helper.php';
 
     //
     require_once $basePath . '/core/Config.php';
@@ -30,7 +34,6 @@ function initialize()
 
     //
     Log::init($basePath . '/var');
-
 }
 
 /**
