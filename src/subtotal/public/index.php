@@ -38,6 +38,11 @@ function perform()
 
     foreach ($rows as $index => $row) {
 
+        if (!isset($row[$nameKey])) {
+            echo 'Error: 解析出來的資料有問題, 請檢查 csv 欄位標題 是否有異動';
+            exit;
+        }
+
         $row['new_1'] = '';
         $row['new_2'] = '';
         $row['new_3'] = '';
@@ -142,7 +147,28 @@ function getCsvContents()
     }
 
     $csvFile = $files[0];
+    validateFile($csvFile);
     return parseCsv($csvFile);
+}
+
+/**
+ *
+ */
+function validateFile($file)
+{
+    if (!file_exists($file)) {
+        die('Error: 檔案不存在!');
+    }
+
+    $mimeType = mime_content_type($file);
+    switch ($mimeType) {
+        case 'text/plain':
+            // safe
+            break;
+        default:
+            die("Error: 檔案格式不正確 - {$mimeType}");
+    }
+
 }
 
 /**

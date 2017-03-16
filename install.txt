@@ -1,0 +1,11 @@
+第一次使用之前
+要安裝 xampp
+    https://www.apachefriends.org/download.html
+
+安裝 xampp 指定一個目錄
+    例如
+    c:\xampp
+
+安裝完之後要編輯 "設定檔"
+    config/config.cmd
+

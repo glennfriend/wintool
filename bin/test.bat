@@ -2,10 +2,26 @@
 :: @chcp 65001
 ::
 
-@ECHO "exec shell"
-@..\xampp\php\php.exe ..\src\test\index.php
+::
+:: config
+::
+@CALL ../config/config.cmd
 
-@ECHO "server up"
-@ECHO "伺服器即將啟動, 請查看 http://localhost"
-@ECHO "關閉此視窗, 將會關閉伺服器"
-@..\xampp\php\php.exe -S localhost:80 ..\src\test\index.php
+::
+:: 執行 script 腳本檔案
+::
+@ECHO ========================================
+@ECHO exec shell
+@ECHO ========================================
+@%MY_XAMPP_PATH%\php\php.exe ..\src\test\index.php
+@ECHO.
+
+::
+:: 啟動伺服器
+::
+@ECHO ========================================
+@ECHO Server will start
+@ECHO Please open browser to "http://localhost"
+@ECHO ========================================
+@%MY_XAMPP_PATH%\php\php.exe -S localhost:80 ..\src\test\index.php
+@ECHO.
