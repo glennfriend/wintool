@@ -4,6 +4,17 @@
 @CALL ../config/config.cmd
 
 ::
+:: validate
+::
+@IF EXIST %MY_XAMPP_PATH% (
+    REM file exist
+) else (
+    @ECHO Error: "%MY_XAMPP_PATH%" not exists!
+    PAUSE
+    EXIT
+)
+
+::
 :: 啟動伺服器
 ::
 @ECHO ========================================
