@@ -1,11 +1,30 @@
-第一次使用之前
-要安裝 xampp
-    https://www.apachefriends.org/download.html
+第一次使用之前, 要安裝 xampp
 
-安裝 xampp 指定一個目錄
-    例如
-    c:\xampp
+方式一
 
-安裝完之後要編輯 "設定檔"
-    config/config.cmd
+    下載 https://www.apachefriends.org/download.html
 
+    安裝 xampp 指定一個目錄, 例如
+        c:\xampp
+
+    安裝完之後要編輯 "設定檔"
+        config/config.cmd
+
+方式二
+
+    在目錄 software 裡面提供了 portable 免安裝的版本
+    當初是在這裡下載 https://downloads.sourceforge.net/project/xampp/XAMPP%20Windows/7.4.10/xampp-portable-windows-x64-7.4.10-0-VC15.7z?r=https%3A%2F%2Fsourceforge.net%2Fprojects%2Fxampp%2Ffiles%2FXAMPP%2520Windows%2F7.4.10%2Fxampp-portable-windows-x64-7.4.10-0-VC15.7z%2Fdownload%3Fuse_mirror%3Diweb&ts=1600258770&use_mirror=iweb
+    或是            https://sourceforge.net/projects/xampp/files/XAMPP%20Windows/8.2.4/xampp-portable-windows-x64-8.2.4-0-VS16.7z/download
+
+    解壓縮 xampp 到指定的目錄, 例如
+        c:\xampp
+
+    編輯 "設定檔"
+        config/config.cmd
+
+    修改 c:\xampp\php\php.ini
+        ; 原本是
+        ; extension_dir = "\xampp\php\ext"
+        ;
+        ; 要改成
+        extension_dir = "C:\xampp\php\ext"

@@ -1,3 +1,6 @@
-node_modules
+_software/
+.vscode/
+.idea/
+node_modules/
+xampp/
 npm-debug.log
-xampp
