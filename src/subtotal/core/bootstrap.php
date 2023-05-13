@@ -7,7 +7,7 @@ use App\Utility\Log;
 function initialize()
 {
     error_reporting(E_ALL);
-    ini_set('html_errors','Off');
+    ini_set('html_errors','On');
     ini_set('display_errors','On');
 
     //

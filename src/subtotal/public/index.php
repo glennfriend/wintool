@@ -1,15 +1,13 @@
 <?php
 #!/usr/bin/php -q
+use App\Utility\FileDetectEncoding;
 use League\Csv\Reader;
 use League\Csv\Writer;
-use App\Library\Csv\CsvHeaderNameManager;
 
 //
 $basePath = dirname(__DIR__);
 require_once $basePath . '/core/bootstrap.php';
 initialize();
-
-//
 perform();
 exit;
 
@@ -18,23 +16,27 @@ exit;
 // --------------------------------------------------------------------------------
 
 /**
- *
+ * @throws \League\Csv\CannotInsertRecord
  */
-function perform()
+function perform(): void
 {
-    $previous_user = '';
-    $current_user = '';
-
-    list($outputHeaders, $rows) = getCsvContents();
+    list($originHeaders, $rows) = getCsvContents();
     if (!$rows) {
         echo "沒有資料";
         exit;
     }
 
-    $key1 = 'i';        // 第一組時間 的 欄位名稱
-    $key2 = 'w';        // 第二組時間 的 欄位名稱
-    $key3 = 'l';        // 第三組時間 的 欄位名稱
-    $nameKey = 'umw';   // 以該欄位做為 user 分類名稱
+    $key1 = '時數(給付)';       // 第一組時間 的 欄位名稱
+    $key2 = '時數(已使用)';     // 第二組時間 的 欄位名稱
+    $key3 = '剩餘時數';         // 第三組時間 的 欄位名稱
+    $nameKey = '員工代號';      // 以該欄位做為 user 分類名稱
+
+    $previous_user = '';
+    $allHeaders = $originHeaders;
+    // new_1 -> subtotal_時數(給付)
+    // new_2 -> subtotal_時數(已使用)
+    // new_3 -> subtotal_剩餘時數
+    array_push($allHeaders, 'new_1', 'new_2', 'new_3');
 
     foreach ($rows as $index => $row) {
 
@@ -46,73 +48,110 @@ function perform()
         $row['new_1'] = '';
         $row['new_2'] = '';
         $row['new_3'] = '';
-        $current_user = $row[$nameKey];
+        $current_user = isset($row[$nameKey]) ? $row[$nameKey] : null;
         if ($previous_user === $current_user) {
 
             $previousIndex = $index - 1;
 
             $previousTime = $rows[$previousIndex]['new_1'];
-            $row['new_1'] = calculateTimePlus($row[$key1], $previousTime);
+            if (isset($row[$key1])) {
+                $row['new_1'] = calculateTimePlus($row[$key1] ?? '', $previousTime);
+            }
             $rows[$previousIndex]['new_1'] = '';
 
             $previousTime = $rows[$previousIndex]['new_2'];
-            $row['new_2'] = calculateTimePlus($row[$key2], $previousTime);
+            if (isset($row[$key2])) {
+                $row['new_2'] = calculateTimePlus($row[$key2] ?? '', $previousTime);
+            }
             $rows[$previousIndex]['new_2'] = '';
 
             $previousTime = $rows[$previousIndex]['new_3'];
-            $row['new_3'] = calculateTimePlus($row[$key3], $previousTime);
+            if (isset($row[$key3])) {
+                $row['new_3'] = calculateTimePlus($row[$key3] ?? '', $previousTime);
+            }
             $rows[$previousIndex]['new_3'] = '';
 
-        }
-        else {
-            $row['new_1'] = calculateTimePlus($row[$key1]);
-            $row['new_2'] = calculateTimePlus($row[$key2]);
-            $row['new_3'] = calculateTimePlus($row[$key3]);
+        } else {
+            if (isset($row[$key1]) && isset($row[$key2]) && isset($row[$key3])) {
+                $row['new_1'] = calculateTimePlus($row[$key1]);
+                $row['new_2'] = calculateTimePlus($row[$key2]);
+                $row['new_3'] = calculateTimePlus($row[$key3]);
+            }
         }
 
         $rows[$index] = $row;
         $previous_user = $current_user;
     }
 
-    // pr($rows);
-    downloadCsv($outputHeaders, $rows);
-
+    $outputHeaders = [
+        '員工代號',
+        '員工姓名',
+        '時數(給付)',
+        '時數(已使用)',
+        '剩餘時數',
+        '部門名稱',
+        'new_1',
+        'new_2',
+        'new_3',
+    ];
+    downloadCsv($rows, $outputHeaders);
 }
 
 // --------------------------------------------------------------------------------
 //
 // --------------------------------------------------------------------------------
 
+function intersect_values(array $row1, array $row2): array
+{
+    return array_values(array_intersect($row1, $row2));
+}
+
+function filterRows(array $originRows, array $allowKeys): array
+{
+    $rows = [];
+    foreach ($originRows as $index => $originRow) {
+        $rows[] = array_intersect_key($originRow, array_flip($allowKeys));
+    }
+
+    return $rows;
+}
+
 /**
  * 對 天數 及 時數 做計算
  * 時數過 8 則進位到 天數
+ * 傳入格式為 日:時:分
  *
- * @param string $timeString     format hh:mm:dd
- * @param string $plusTimeString format hh:mm:dd
+ * @param string $timeString format dd:hh:mm
+ * @param string $plusTimeString format dd:hh:mm
  * @return string
  */
-function calculateTimePlus($timeString, $plusTimeString='')
+function calculateTimePlus(string $timeString, $plusTimeString = '')
 {
-    $parseTimeFunc = function($myTime) {
+    $parseTimeFunc = function (string $myTime) {
+        if (!$myTime) {
+            $myTime = '';
+        }
         preg_match_all("/([0-9]{2}):([0-9]{2}):([0-9]{2})/is", $myTime, $matches);
         return $matches;
     };
 
     $times = $parseTimeFunc($timeString);
-    $day    = (int) $times[1][0];
-    $hour   = (int) $times[2][0];
-    $minute = (int) $times[3][0];
+    //print_r($timeString);
+    //print_r($times);
+    //echo "<br>\n";
+    $day = isset($times[1][0]) ? (int)$times[1][0] : 0;
+    $hour = isset($times[2][0]) ? (int)$times[2][0] : 0;
+    $minute = isset($times[3][0]) ? (int)$times[3][0] : 0;
 
     // 如果要相加
     if ($plusTimeString) {
+        $plusTimes = $parseTimeFunc($plusTimeString);
+        $plusDay = (int)$plusTimes[1][0];
+        $plusHoure = (int)$plusTimes[2][0];
+        $plusMinute = (int)$plusTimes[3][0];
 
-        $plusTimes  = $parseTimeFunc($plusTimeString);
-        $plusDay    = (int) $plusTimes[1][0];
-        $plusHoure  = (int) $plusTimes[2][0];
-        $plusMinute = (int) $plusTimes[3][0];
-
-        $day    += $plusDay;
-        $hour   += $plusHoure;
+        $day += $plusDay;
+        $hour += $plusHoure;
         $minute += $plusMinute;
 
         // 將 小時 進位到 天 的值
@@ -121,7 +160,6 @@ function calculateTimePlus($timeString, $plusTimeString='')
             $day += $hourAddNumber;
             $hour = $hour % 8;  // 進位之後, 剩下的小時數
         }
-
     }
 
     $format = sprintf('%02s:%02s:%02s', $day, $hour, $minute);
@@ -131,7 +169,7 @@ function calculateTimePlus($timeString, $plusTimeString='')
 /**
  *
  */
-function getCsvContents()
+function getCsvContents(): array
 {
     $varPath = getProjectPath('/var');
     $fileRule = "{$varPath}/*.[cC][sS][vV]";
@@ -140,8 +178,7 @@ function getCsvContents()
     if ($fileCount < 1) {
         echo "{$varPath} 目錄中找不到 csv 檔案";
         exit;
-    }
-    elseif ($fileCount > 1) {
+    } elseif ($fileCount > 1) {
         echo "{$varPath} 目錄有多個 csv 檔案, 只保留一個檔案";
         exit;
     }
@@ -151,10 +188,7 @@ function getCsvContents()
     return parseCsv($csvFile);
 }
 
-/**
- *
- */
-function validateFile($file)
+function validateFile(string $file): void
 {
     if (!file_exists($file)) {
         die('Error: 檔案不存在!');
@@ -163,6 +197,8 @@ function validateFile($file)
     $mimeType = mime_content_type($file);
     switch ($mimeType) {
         case 'text/plain':
+        case 'text/csv':
+        case 'application/csv':
             // safe
             break;
         default:
@@ -172,42 +208,68 @@ function validateFile($file)
 }
 
 /**
- *
+ * @throws \League\Csv\InvalidArgument
+ * @throws \League\Csv\UnableToProcessCsv
+ * @throws \League\Csv\UnavailableFeature
  */
-function parseCsv($file)
+function parseCsv(string $file): array
 {
-    $csv = Reader::createFromPath($file);
-    $originHeaders = $csv->fetchOne();
-    $headers = CsvHeaderNameManager::convert($originHeaders);
+    $reader = Reader::createFromPath($file);
+    $detectEncoding = FileDetectEncoding::detect($file);
+    $reader->setHeaderOffset(0);    // csv 有 header, 並且在第一行
+    if ($detectEncoding && $detectEncoding !== 'UTF-8') {
+        $reader->addStreamFilter("convert.iconv.{$detectEncoding}/UTF-8");
+    }
 
-    $index = 0;
-    foreach ($csv->fetchAssoc($headers) as $row) {
-        $index++;
-        if (1 === $index) {
-            // is header
-            continue;
+    /*
+        try {
+            $originHeaders = $reader->fetchOne();
+            pr($originHeaders);
+        } catch (Exception $exception) {
+            echo '讀取 csv 檔案錯誤, 有可能是這個 csv 檔案現在正被被開啟, 請先關閉這個檔案.';
+            echo "<br>\n";
+            throw $exception;
         }
+    */
 
+    foreach ($reader as $row) {
         $rows[] = $row;
     }
 
-    return [$originHeaders, $rows];
+    return [$reader->getHeader(), $rows];
 }
 
 /**
- *
+ * @throws \League\Csv\CannotInsertRecord
  */
-function downloadCsv(array $headers, array $rows)
+function downloadCsv(array $rows, array $headers): void
 {
-    $csv = Writer::createFromFileObject(new SplTempFileObject());
-    $csv->insertOne($headers);
+    $writer = factoryWriter($rows, $headers);
 
+    // debug only
+    //echo $writer->toString(); exit;
+
+
+    // $outputPath = getProjectPath('/var/output.csv');
+    $outputName = 'output_' . date('Y-m-d') . '.csv';
+    // $csv->setOutputBOM(Reader::BOM_UTF8);
+    $writer->output($outputName);
+}
+
+/**
+ * @throws \League\Csv\CannotInsertRecord
+ */
+function factoryWriter(array $rows, array $headers): Writer
+{
+    $writer = Writer::createFromFileObject(new SplTempFileObject());
+    $writer->insertOne($headers);
     foreach ($rows as $row) {
-        $csv->insertOne($row);
+        $filteredRow = [];
+        foreach ($headers as $header) {
+            $filteredRow[] = $row[$header] ?? '';
+        }
+        $writer->insertOne($filteredRow);
     }
 
-    $outputPath = getProjectPath('/var/output.csv');
-    $outputName = 'output_' . date('Y-m-d') . '.csv';
-    //$csv->setOutputBOM(Reader::BOM_UTF8);
-    $csv->output($outputName);
+    return $writer;
 }
